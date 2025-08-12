@@ -9,6 +9,7 @@ on:
 jobs:
   track-guild:
     runs-on: ubuntu-latest
+    timeout-minutes: 15  # Kills job after 15 minutes if stuck
     
     steps:
     - name: Checkout code
@@ -21,7 +22,7 @@ jobs:
     
     - name: Install dependencies
       run: |
-        pip install selenium pandas gspread google-auth google-auth-oauthlib google-auth-httplib2
+        pip install selenium pandas gspread google-auth google-auth-oauthlib google-auth-httplib2 requests beautifulsoup4
         
     - name: Install Chrome and ChromeDriver
       run: |
@@ -40,8 +41,11 @@ jobs:
         mkdir -p backups
         
     - name: Run guild tracker
+      timeout-minutes: 12  # Kills this step after 12 minutes
       env:
         GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
         DISPLAY: :99
       run: |
+        echo "Starting Python script..."
         python GitHub_version.py
+        echo "Python script completed."
