@@ -201,69 +201,6 @@ class ResonanceRemainTracker:
             print(f"❌ Error setting up Chrome driver: {e}")
             return False
 
-    def setup_driver_alternative(self):
-        """Alternative browser setup with different strategies"""
-        # Multiple user agents to try
-        user_agents = [
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0"
-        ]
-        
-        chrome_options = Options()
-        
-        # Try non-headless mode (might work better)
-        chrome_options.add_argument("--headless=new")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--disable-gpu")
-        
-        # Random window size
-        sizes = ["1366,768", "1920,1080", "1440,900", "1536,864"]
-        chrome_options.add_argument(f"--window-size={random.choice(sizes)}")
-        
-        # Random user agent
-        chrome_options.add_argument(f"--user-agent={random.choice(user_agents)}")
-        
-        # Advanced stealth options
-        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        chrome_options.add_experimental_option('useAutomationExtension', False)
-        
-        # Additional options to mimic real browser
-        chrome_options.add_argument("--disable-web-security")
-        chrome_options.add_argument("--allow-running-insecure-content")
-        chrome_options.add_argument("--disable-features=VizDisplayCompositor")
-        
-        try:
-            self.driver = webdriver.Chrome(options=chrome_options)
-            
-            # Advanced stealth scripts
-            stealth_scripts = [
-                "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})",
-                "Object.defineProperty(navigator, 'plugins', {get: () => Array.from({length: 3}, (_, i) => ({name: `Plugin ${i}`}))})",
-                "Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']})",
-                "Object.defineProperty(navigator, 'hardwareConcurrency', {get: () => 8})",
-                "Object.defineProperty(navigator, 'deviceMemory', {get: () => 8})",
-                "Object.defineProperty(navigator, 'platform', {get: () => 'Win32'})",
-                "window.chrome = {runtime: {onConnect: null, onMessage: null}}",
-                "Object.defineProperty(navigator, 'permissions', {get: () => ({query: () => Promise.resolve({state: 'granted'})})})"
-            ]
-            
-            for script in stealth_scripts:
-                try:
-                    self.driver.execute_script(script)
-                except:
-                    pass
-            
-            print("✅ Alternative Chrome driver setup successful")
-            return True
-            
-        except Exception as e:
-            print(f"❌ Error setting up alternative Chrome driver: {e}")
-            return False
-
     def wait_for_cloudflare(self, max_wait=30):
         """Faster Cloudflare detection"""
         print("⏳ Waiting for Cloudflare challenge to complete...")
@@ -471,18 +408,6 @@ class ResonanceRemainTracker:
             import traceback
             traceback.print_exc()
             return []
-
-    def scrape_with_alternative_selenium(self):
-        """Scraping with alternative selenium setup"""
-        if not self.setup_driver_alternative():
-            return []
-        
-        try:
-            return self.scrape_guild_data()
-        finally:
-            if self.driver:
-                self.driver.quit()
-                self.driver = None
 
     def parse_guild_data(self, raw_text):
         """Parse guild data from table text - ENHANCED RANK DETECTION"""
@@ -723,4 +648,331 @@ class ResonanceRemainTracker:
             # Create timestamp for new level column
             current_datetime = datetime.now()
             current_date = current_datetime.strftime("%d/%m/%Y")
-            current_time = current_datetime.str
+            current_time = current_datetime.strftime("%H:%M:%S")
+            level_column_name = f"Level_{current_date}_{current_time}"
+            
+            print(f"📅 New level column: {level_column_name}")
+            
+            # Get existing data if sheet exists
+            existing_data = {}
+            existing_headers = []
+            
+            if existing_sheet:
+                try:
+                    all_values = worksheet.get_all_values()
+                    if all_values:
+                        existing_headers = all_values[0]
+                        print(f"📋 Found existing headers: {existing_headers}")
+                        
+                        # Create lookup for existing members
+                        for row in all_values[1:]:  # Skip header row
+                            if len(row) > 1 and row[1]:  # Check if Name column (B) has value
+                                name = row[1].strip()
+                                existing_data[name] = row
+                        
+                        print(f"📊 Found {len(existing_data)} existing members in sheet")
+                except Exception as e:
+                    print(f"⚠️  Could not read existing data: {e}")
+                    existing_data = {}
+                    existing_headers = []
+            
+            # Build new data structure
+            print(f"📋 Processing {len(guild_data)} scraped members...")
+            
+            # Define base headers (fixed columns A-F)
+            base_headers = ['Rank', 'Name', 'Title', 'Vocation', 'Level', 'Joining Date']
+            
+            # Determine all headers (base + existing level columns + new level column)
+            all_headers = base_headers.copy()
+            
+            # Add existing level columns (skip base headers)
+            for header in existing_headers:
+                if header.startswith('Level_') and header not in all_headers:
+                    all_headers.append(header)
+            
+            # Add new level column
+            if level_column_name not in all_headers:
+                all_headers.append(level_column_name)
+            
+            print(f"📊 Final headers: {all_headers}")
+            
+            # Build member rows and identify members who left
+            final_rows = []
+            new_members_count = 0
+            updated_members_count = 0
+            current_member_names = set()
+            left_members = []
+            
+            # Process current guild members
+            for member in guild_data:
+                name = member['Name'].strip()
+                current_level = member.get('Level', '')
+                current_member_names.add(name)
+                
+                # Check if member exists
+                if name in existing_data:
+                    # Existing member - preserve existing data and add new level
+                    existing_row = existing_data[name]
+                    updated_members_count += 1
+                    
+                    # Build new row with existing data
+                    new_row = [''] * len(all_headers)
+                    
+                    # Copy existing data up to the length we have
+                    for i, value in enumerate(existing_row):
+                        if i < len(all_headers):
+                            new_row[i] = value
+                    
+                    # Update basic info (might have changed)
+                    new_row[0] = member.get('Rank', '')      # A: Rank
+                    new_row[1] = name                         # B: Name
+                    new_row[2] = member.get('Title', '')      # C: Title
+                    new_row[3] = member.get('Vocation', '')   # D: Vocation
+                    # Column E (Level) is preserved from existing data
+                    new_row[5] = member.get('Joining Date', '') # F: Joining Date
+                    
+                    # Add current level to new timestamp column
+                    new_level_col_index = all_headers.index(level_column_name)
+                    new_row[new_level_col_index] = current_level
+                    
+                    print(f"   ✅ Updated existing member: {name} (Level: {current_level})")
+                    
+                else:
+                    # New member - set starting level in column E and new column
+                    new_members_count += 1
+                    
+                    new_row = [''] * len(all_headers)
+                    new_row[0] = member.get('Rank', '')       # A: Rank
+                    new_row[1] = name                         # B: Name
+                    new_row[2] = member.get('Title', '')      # C: Title
+                    new_row[3] = member.get('Vocation', '')   # D: Vocation
+                    new_row[4] = current_level                # E: Level (starting level)
+                    new_row[5] = member.get('Joining Date', '') # F: Joining Date
+                    
+                    # Add current level to new timestamp column as well
+                    new_level_col_index = all_headers.index(level_column_name)
+                    new_row[new_level_col_index] = current_level
+                    
+                    print(f"   🆕 New member: {name} (Starting Level: {current_level})")
+                
+                final_rows.append(new_row)
+            
+            # Identify members who left (were in existing data but not in current scrape)
+            for existing_name, existing_row in existing_data.items():
+                if existing_name not in current_member_names:
+                    # This member left the guild - add to left_members list
+                    left_members.append(existing_row)
+                    print(f"   ⬅️  Member left guild: {existing_name}")
+            
+            # Move left members to sairam tab
+            if left_members:
+                print(f"\n📤 Moving {len(left_members)} left members to sairam tab...")
+                self.move_left_members_to_sairam(spreadsheet, left_members)
+            
+            # Prepare final data for upload (only current guild members)
+            all_values = [all_headers] + final_rows
+            
+            print(f"📊 Summary:")
+            print(f"   🆕 New members: {new_members_count}")
+            print(f"   ✅ Updated members: {updated_members_count}")
+            print(f"   ⬅️  Left members (moved to sairam): {len(left_members)}")
+            print(f"   📊 Active guild members: {len(final_rows)}")
+            print(f"   📋 Total columns: {len(all_headers)}")
+            
+            # Clear and upload
+            print(f"📤 Uploading data to {sheet_name} tab...")
+            worksheet.clear()
+            
+            # Upload in chunks if needed
+            try:
+                worksheet.update(values=all_values, range_name='A1')
+                print("✅ Successfully uploaded data")
+            except Exception as upload_error:
+                print(f"⚠️  Direct upload failed: {upload_error}")
+                print("🔄 Trying chunked upload...")
+                
+                # Upload headers first
+                worksheet.update(values=[all_headers], range_name='A1')
+                
+                # Upload data in chunks of 100 rows
+                chunk_size = 100
+                for i in range(0, len(final_rows), chunk_size):
+                    chunk = final_rows[i:i + chunk_size]
+                    start_row = i + 2  # +2 because row 1 is headers and sheets are 1-indexed
+                    end_row = start_row + len(chunk) - 1
+                    range_name = f'A{start_row}:{chr(ord("A") + len(all_headers) - 1)}{end_row}'
+                    
+                    worksheet.update(values=chunk, range_name=range_name)
+                    print(f"📤 Uploaded chunk {i//chunk_size + 1}: rows {start_row}-{end_row}")
+                
+                print("✅ Successfully uploaded all data in chunks")
+            
+            # Add timestamp in a separate area
+            timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+            try:
+                # Put timestamp in the row below the last column
+                timestamp_col = chr(ord('A') + len(all_headers) + 1) if len(all_headers) < 25 else "Z"
+                worksheet.update(values=[[f'Last Updated: {timestamp}']], range_name=f'{timestamp_col}1')
+                print("🕒 Added timestamp")
+            except:
+                print("⚠️  Could not add timestamp (non-critical)")
+            
+            print(f"✅ Successfully updated {self.guild_name}")
+            print(f"📊 Spreadsheet URL: {spreadsheet.url}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error updating {self.guild_name} spreadsheet: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            # Save locally as backup
+            print(f"\n💾 Saving data locally as backup...")
+            return self.save_data_locally(guild_data)
+
+    def save_data_locally(self, guild_data):
+        """Save data locally as CSV backup"""
+        try:
+            import csv
+            backup_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backups")
+            os.makedirs(backup_dir, exist_ok=True)
+            
+            timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
+            # Use safe filename
+            safe_guild_name = self.guild_name.replace(" ", "_")
+            filename = f"{safe_guild_name}_backup_{timestamp}.csv"
+            filepath = os.path.join(backup_dir, filename)
+            
+            if guild_data:
+                fieldnames = ['Rank', 'Name', 'Title', 'Vocation', 'Level', 'Joining Date']
+                with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
+                    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                    writer.writeheader()
+                    writer.writerows(guild_data)
+                
+                print(f"✅ {self.guild_name} data saved locally: {filepath}")
+                return True
+            return False
+                
+        except Exception as e:
+            print(f"❌ Error saving {self.guild_name} local backup: {e}")
+            return False
+
+    def check_google_permissions(self):
+        """Check Google OAuth permissions"""
+        try:
+            creds = self.get_google_credentials()
+            client = gspread.authorize(creds)
+            
+            files = client.list_spreadsheet_files()
+            print(f"✅ Can access Drive - found {len(files)} spreadsheets")
+            return True
+                
+        except Exception as e:
+            print(f"❌ OAuth check failed: {e}")
+            return False
+
+    def run_with_multiple_approaches(self):
+        """Try multiple scraping approaches"""
+        approaches = [
+            ("Requests + BeautifulSoup", self.scrape_with_requests),
+            ("Standard Selenium", self.scrape_with_standard_selenium)
+        ]
+        
+        for approach_name, approach_method in approaches:
+            print(f"\n🎯 Trying approach: {approach_name}")
+            
+            try:
+                guild_data = approach_method()
+                
+                if guild_data:
+                    print(f"✅ {approach_name} succeeded!")
+                    if self.update_spreadsheet(guild_data):
+                        print(f"📊 Successfully updated spreadsheet with {len(guild_data)} members")
+                        return True
+                    else:
+                        print("❌ Spreadsheet update failed")
+                else:
+                    print(f"❌ {approach_name} failed - no data retrieved")
+                    
+            except Exception as e:
+                print(f"❌ {approach_name} failed with error: {e}")
+                import traceback
+                traceback.print_exc()
+            
+            # Small delay between approaches
+            time.sleep(5)
+        
+        print("❌ All approaches failed")
+        return False
+
+    def scrape_with_standard_selenium(self):
+        """Scraping with standard selenium setup"""
+        if not self.setup_driver():
+            return []
+        
+        try:
+            return self.scrape_guild_data()
+        finally:
+            if self.driver:
+                self.driver.quit()
+                self.driver = None
+
+    def run(self):
+        """Main execution function for Resonance Remain guild"""
+        print("🚀 Resonance Remain Guild Tracker Starting...")
+        print("🎯 Target: Resonance Remain Guild")
+        print("=" * 50)
+        
+        # Setup cloud credentials first
+        print("🔐 Step 0: Setting up cloud credentials...")
+        if not self.setup_cloud_credentials():
+            print("❌ Failed to setup credentials")
+            return
+        
+        print("\n🔧 Step 1: Validating setup...")
+        if not self.validate_setup():
+            print("\n❌ Please fix the setup issues above")
+            return
+        
+        print("\n🔍 Step 2: Checking Google OAuth authentication...")
+        try:
+            if not self.check_google_permissions():
+                print("❌ Google OAuth has issues")
+                return
+        except Exception as e:
+            print(f"❌ Authentication error: {e}")
+            return
+        
+        print("\n🎯 Step 3: Starting guild data collection with multiple approaches...")
+        
+        # Try multiple approaches for better success rate
+        success = self.run_with_multiple_approaches()
+        
+        if success:
+            print(f"\n🎉 RESONANCE REMAIN GUILD TRACKER COMPLETED SUCCESSFULLY!")
+        else:
+            print(f"\n❌ RESONANCE REMAIN GUILD TRACKER FAILED AFTER ALL APPROACHES")
+
+if __name__ == "__main__":
+    print("🔥 STARTING RESONANCE REMAIN GUILD TRACKER...")
+    print("📅 Date:", datetime.now().strftime("%d/%m/%Y %H:%M:%S"))
+    print("🌍 Environment:", "GitHub Actions" if os.environ.get('GITHUB_ACTIONS') else "Local")
+    print("-" * 50)
+    
+    try:
+        tracker = ResonanceRemainTracker()
+        print("✅ Resonance Remain tracker initialized successfully")
+        tracker.run()
+    except Exception as e:
+        print(f"❌ Critical error: {e}")
+        import traceback
+        traceback.print_exc()
+        # Exit with error code for GitHub Actions
+        exit(1)
+    
+    print("\n🏁 Resonance Remain tracker execution completed")
+    
+    # Only wait for input if running locally (not in GitHub Actions)
+    if not os.environ.get('GITHUB_ACTIONS'):
+        input("Press Enter to exit...")
