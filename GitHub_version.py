@@ -148,7 +148,7 @@ class ResonanceRemainTracker:
             return True
 
     def setup_driver(self):
-        """Setup Chrome driver with maximum stealth"""
+        """Setup Chrome driver with optimized stealth"""
         chrome_options = Options()
         
         # Basic headless setup
@@ -156,123 +156,88 @@ class ResonanceRemainTracker:
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--window-size=1366,768")
         
-        # Realistic window size and user agent
-        chrome_options.add_argument("--window-size=1366,768")  # Common resolution
+        # Essential stealth options
+        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        chrome_options.add_experimental_option('useAutomationExtension', False)
         chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
         
-        # Maximum stealth options
-        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
-        chrome_options.add_experimental_option('useAutomationExtension', False)
-        
-        # Additional stealth measures
+        # Performance optimizations
         chrome_options.add_argument("--disable-extensions")
         chrome_options.add_argument("--disable-plugins")
-        chrome_options.add_argument("--disable-web-security")
-        chrome_options.add_argument("--allow-running-insecure-content")
         chrome_options.add_argument("--no-first-run")
         chrome_options.add_argument("--disable-default-apps")
-        chrome_options.add_argument("--disable-background-timer-throttling")
-        chrome_options.add_argument("--disable-renderer-backgrounding")
-        chrome_options.add_argument("--disable-backgrounding-occluded-windows")
-        chrome_options.add_argument("--force-color-profile=srgb")
-        chrome_options.add_argument("--metrics-recording-only")
-        chrome_options.add_argument("--disable-background-networking")
         
-        # Language and locale
-        chrome_options.add_argument("--lang=en-US")
+        # Language settings
         chrome_options.add_experimental_option('prefs', {
             'intl.accept_languages': 'en-US,en;q=0.9',
-            'profile.default_content_setting_values.notifications': 2,
-            'profile.default_content_settings.popups': 0,
             'profile.managed_default_content_settings.images': 2  # Disable images for speed
         })
         
         try:
             self.driver = webdriver.Chrome(options=chrome_options)
             
-            # Execute comprehensive stealth scripts
-            stealth_scripts = [
+            # Essential stealth scripts only
+            essential_scripts = [
                 "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})",
                 "Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]})",
-                "Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']})",
-                "Object.defineProperty(navigator, 'hardwareConcurrency', {get: () => 4})",
-                "Object.defineProperty(navigator, 'deviceMemory', {get: () => 8})",
-                "Object.defineProperty(screen, 'width', {get: () => 1366})",
-                "Object.defineProperty(screen, 'height', {get: () => 768})",
-                "window.chrome = { runtime: {} }",
-                "Object.defineProperty(navigator, 'permissions', {get: () => ({query: () => Promise.resolve({state: 'granted'})})})"
+                "Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']})"
             ]
             
-            for script in stealth_scripts:
+            for script in essential_scripts:
                 try:
                     self.driver.execute_script(script)
                 except:
-                    pass  # Ignore individual script failures
+                    pass
             
-            print("✅ Chrome driver setup successful (maximum stealth mode)")
+            print("✅ Chrome driver setup successful (optimized stealth mode)")
             return True
             
         except Exception as e:
             print(f"❌ Error setting up Chrome driver: {e}")
             return False
 
-    def wait_for_cloudflare(self, max_wait=90):
-        """Enhanced Cloudflare detection and waiting"""
+    def wait_for_cloudflare(self, max_wait=30):
+        """Faster Cloudflare detection"""
         print("⏳ Waiting for Cloudflare challenge to complete...")
         start_time = time.time()
-        consecutive_success = 0  # Need multiple successful checks
         
         while time.time() - start_time < max_wait:
             try:
                 page_title = self.driver.title.lower()
                 page_source = self.driver.page_source.lower()
-                current_url = self.driver.current_url
                 
-                # Comprehensive Cloudflare detection
+                # Quick Cloudflare detection
                 cloudflare_indicators = [
                     "attention required",
-                    "cloudflare",
-                    "ray id:",
+                    "cloudflare", 
                     "checking your browser",
-                    "please wait",
-                    "verifying you are human",
-                    "ddos protection",
-                    "security check",
-                    "one moment please"
+                    "ray id"
                 ]
                 
                 is_cloudflare = any(indicator in page_source or indicator in page_title for indicator in cloudflare_indicators)
                 
-                # Also check URL for Cloudflare patterns
-                if "cf-browser-verification" in current_url or "cf-under-attack" in current_url:
-                    is_cloudflare = True
-                
                 if is_cloudflare:
                     elapsed = int(time.time() - start_time)
-                    print(f"🔄 Cloudflare challenge active... ({elapsed}s)")
-                    time.sleep(random.uniform(3, 6))  # Random delays
-                    consecutive_success = 0
+                    print(f"🔄 Cloudflare active... ({elapsed}s)")
+                    time.sleep(2)
                 else:
-                    consecutive_success += 1
-                    if consecutive_success >= 2:  # Need 2 consecutive successes
-                        print("✅ Cloudflare challenge completed!")
-                        print(f"📄 Final page title: {self.driver.title}")
-                        return True
-                    time.sleep(2)  # Brief pause before re-checking
+                    print("✅ Cloudflare challenge completed!")
+                    print(f"📄 Page title: {self.driver.title}")
+                    return True
                     
             except Exception as e:
-                print(f"⚠️  Error checking Cloudflare status: {e}")
-                time.sleep(3)
+                print(f"⚠️  Error: {e}")
+                time.sleep(2)
         
-        print(f"❌ Cloudflare challenge timeout after {max_wait}s")
+        print(f"❌ Cloudflare timeout after {max_wait}s")
         print(f"📄 Final page title: {self.driver.title}")
-        print(f"🔗 Final URL: {self.driver.current_url}")
         return False
 
     def scrape_guild_data(self):
-        """Enhanced scraping with better Cloudflare handling"""
+        """Faster scraping with minimal delays"""
         guild_name_encoded = urllib.parse.quote_plus(self.guild_name)
         url = f"https://rubinot.com.br/?subtopic=guilds&page=view&GuildName={guild_name_encoded}"
         
@@ -280,26 +245,18 @@ class ResonanceRemainTracker:
             print(f"🌐 Navigating to {self.guild_name} guild page...")
             print(f"🔗 URL: {url}")
             
-            # Add random delay to seem more human
-            time.sleep(random.uniform(2, 5))
+            # Minimal delay
+            time.sleep(1)
             
             self.driver.get(url)
             
-            # Extended Cloudflare wait with better detection
-            if not self.wait_for_cloudflare(max_wait=90):  # Increased timeout
-                print("❌ Cloudflare challenge failed - trying alternative approach")
-                
-                # Try refreshing the page once
-                print("🔄 Refreshing page...")
-                time.sleep(random.uniform(3, 7))
-                self.driver.refresh()
-                
-                if not self.wait_for_cloudflare(max_wait=60):
-                    print("❌ Still blocked after refresh")
-                    return []
+            # Shorter Cloudflare wait
+            if not self.wait_for_cloudflare(max_wait=30):
+                print("❌ Cloudflare challenge failed")
+                return []
             
-            # Additional wait after Cloudflare
-            time.sleep(random.uniform(3, 8))
+            # Shorter wait after Cloudflare
+            time.sleep(2)
             
             page_title = self.driver.title
             print(f"📄 Page title: {page_title}")
@@ -315,7 +272,7 @@ class ResonanceRemainTracker:
             
             print(f"✅ Successfully accessed {self.guild_name} page")
             
-            # Check for guild name variations (with and without spaces)
+            # Check for guild name variations
             guild_variations = [
                 self.guild_name.lower(),
                 self.guild_name.lower().replace(" ", ""),
@@ -836,23 +793,20 @@ class ResonanceRemainTracker:
             return False
 
     def run_with_retries(self):
-        """Main execution with retry logic for Cloudflare"""
-        max_attempts = 3
+        """Faster retry logic - only 2 attempts"""
+        max_attempts = 2
         
         for attempt in range(1, max_attempts + 1):
             print(f"🎯 Attempt {attempt}/{max_attempts}")
             
             try:
-                # Setup browser
                 if not self.setup_driver():
                     print("❌ Browser setup failed")
                     continue
                 
-                # Try scraping
                 guild_data = self.scrape_guild_data()
                 
                 if guild_data:
-                    # Success! Update spreadsheet
                     if self.update_spreadsheet(guild_data):
                         print(f"\n✅ SUCCESS on attempt {attempt}!")
                         print(f"📊 Updated with {len(guild_data)} members")
@@ -872,10 +826,10 @@ class ResonanceRemainTracker:
                     self.driver.quit()
                     self.driver = None
             
-            # Wait before retry (exponential backoff)
+            # Shorter retry wait
             if attempt < max_attempts:
-                wait_time = (attempt * 30) + random.uniform(10, 30)  # 40-60s, then 70-90s
-                print(f"⏳ Waiting {wait_time:.1f}s before retry...")
+                wait_time = 20
+                print(f"⏳ Waiting {wait_time}s before retry...")
                 time.sleep(wait_time)
         
         print(f"❌ All {max_attempts} attempts failed")
@@ -887,7 +841,7 @@ class ResonanceRemainTracker:
         print("🎯 Target: Resonance Remain Guild")
         print("=" * 50)
         
-        # NEW: Setup cloud credentials first
+        # Setup cloud credentials first
         print("🔐 Step 0: Setting up cloud credentials...")
         if not self.setup_cloud_credentials():
             print("❌ Failed to setup credentials")
@@ -938,4 +892,4 @@ if __name__ == "__main__":
     
     # Only wait for input if running locally (not in GitHub Actions)
     if not os.environ.get('GITHUB_ACTIONS'):
-        input("Press Enter to exit...")
+        input("Press Enter to exit...")%
