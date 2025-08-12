@@ -46,7 +46,7 @@ class ResonanceRemainTracker:
         return False
 
     def get_google_credentials(self):
-        """Get Google credentials using OAuth flow - Cloud compatible"""
+        """Get Google credentials using OAuth flow - Cloud compatible with enhanced token handling"""
         SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 
                   'https://www.googleapis.com/auth/drive']
         
@@ -56,55 +56,63 @@ class ResonanceRemainTracker:
         
         creds = None
         
-        # Try to load existing token
+        # Try to load existing token FIRST (for GitHub Actions)
         if os.path.exists(self.token_file):
             print("🔍 Loading stored credentials...")
             try:
                 with open(self.token_file, 'rb') as token:
                     creds = pickle.load(token)
                 print("✅ Loaded existing authentication token")
+                
+                # If credentials are expired but have refresh token, try to refresh
+                if creds.expired and creds.refresh_token:
+                    print("🔄 Refreshing expired credentials...")
+                    try:
+                        creds.refresh(Request())
+                        print("✅ Successfully refreshed credentials")
+                        
+                        # Save refreshed credentials
+                        with open(self.token_file, 'wb') as token:
+                            pickle.dump(creds, token)
+                        print("💾 Saved refreshed credentials")
+                        
+                    except Exception as e:
+                        print(f"❌ Failed to refresh credentials: {e}")
+                        creds = None
+                
+                # If we have valid credentials, return them
+                if creds and creds.valid:
+                    print("✅ Using existing valid credentials")
+                    return creds
+                    
             except Exception as e:
                 print(f"⚠️  Could not load stored token: {e}")
+                creds = None
         
-        # Check if credentials are valid or need refresh
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                print("🔄 Refreshing expired credentials...")
-                try:
-                    creds.refresh(Request())
-                    print("✅ Successfully refreshed credentials")
-                except Exception as e:
-                    print(f"❌ Failed to refresh credentials: {e}")
-                    creds = None
-            
-            # If we still don't have valid credentials, create new ones
-            if not creds:
-                print("🔐 Starting OAuth authentication...")
-                try:
-                    # Check if we're in a headless environment (GitHub Actions)
-                    if os.environ.get('GITHUB_ACTIONS'):
-                        print("❌ Cannot run interactive OAuth in GitHub Actions")
-                        print("💡 Please use a service account or pre-authorize locally")
-                        raise Exception("Interactive OAuth not available in CI/CD environment")
-                    
-                    flow = InstalledAppFlow.from_client_secrets_file(
-                        self.credentials_file, SCOPES)
-                    creds = flow.run_local_server(port=8080, open_browser=True)
-                    print("✅ Authentication successful!")
-                except Exception as e:
-                    print(f"❌ Authentication failed: {e}")
-                    raise
+        # Only try interactive OAuth if not in GitHub Actions
+        if not os.environ.get('GITHUB_ACTIONS'):
+            print("🔐 Starting OAuth authentication...")
+            try:
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    self.credentials_file, SCOPES)
+                creds = flow.run_local_server(port=8080, open_browser=True)
+                print("✅ Authentication successful!")
                 
-            # Save credentials for future use
-            if creds and creds.valid:
+                # Save credentials for future use
                 print("💾 Saving credentials for future use...")
-                try:
-                    with open(self.token_file, 'wb') as token:
-                        pickle.dump(creds, token)
-                    print("✅ Credentials saved successfully")
-                except Exception as e:
-                    print(f"⚠️  Could not save credentials: {e}")
+                with open(self.token_file, 'wb') as token:
+                    pickle.dump(creds, token)
+                print("✅ Credentials saved successfully")
                 
+            except Exception as e:
+                print(f"❌ Authentication failed: {e}")
+                raise
+        else:
+            # In GitHub Actions, we MUST have a pre-existing token
+            print("❌ No valid token found in GitHub Actions environment")
+            print("💡 Please run the script locally first to generate token.pickle")
+            raise Exception("Pre-authorized token required for GitHub Actions")
+        
         return creds
 
     def validate_setup(self):
@@ -140,61 +148,158 @@ class ResonanceRemainTracker:
             return True
 
     def setup_driver(self):
-        """Setup Chrome driver with cloud-friendly options"""
+        """Setup Chrome driver with maximum stealth"""
         chrome_options = Options()
         
-        # Cloud/headless specific options
-        chrome_options.add_argument("--headless")
+        # Basic headless setup
+        chrome_options.add_argument("--headless=new")
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--window-size=1920,1080")
-        chrome_options.add_argument("--remote-debugging-port=9222")
         
-        # Anti-detection options (keep your existing ones)
+        # Realistic window size and user agent
+        chrome_options.add_argument("--window-size=1366,768")  # Common resolution
+        chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        
+        # Maximum stealth options
         chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
         chrome_options.add_experimental_option('useAutomationExtension', False)
-        chrome_options.add_argument("--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        
+        # Additional stealth measures
+        chrome_options.add_argument("--disable-extensions")
+        chrome_options.add_argument("--disable-plugins")
+        chrome_options.add_argument("--disable-web-security")
+        chrome_options.add_argument("--allow-running-insecure-content")
+        chrome_options.add_argument("--no-first-run")
+        chrome_options.add_argument("--disable-default-apps")
+        chrome_options.add_argument("--disable-background-timer-throttling")
+        chrome_options.add_argument("--disable-renderer-backgrounding")
+        chrome_options.add_argument("--disable-backgrounding-occluded-windows")
+        chrome_options.add_argument("--force-color-profile=srgb")
+        chrome_options.add_argument("--metrics-recording-only")
+        chrome_options.add_argument("--disable-background-networking")
+        
+        # Language and locale
+        chrome_options.add_argument("--lang=en-US")
+        chrome_options.add_experimental_option('prefs', {
+            'intl.accept_languages': 'en-US,en;q=0.9',
+            'profile.default_content_setting_values.notifications': 2,
+            'profile.default_content_settings.popups': 0,
+            'profile.managed_default_content_settings.images': 2  # Disable images for speed
+        })
         
         try:
             self.driver = webdriver.Chrome(options=chrome_options)
-            self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-            print("✅ Chrome driver setup successful (headless mode)")
+            
+            # Execute comprehensive stealth scripts
+            stealth_scripts = [
+                "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})",
+                "Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]})",
+                "Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']})",
+                "Object.defineProperty(navigator, 'hardwareConcurrency', {get: () => 4})",
+                "Object.defineProperty(navigator, 'deviceMemory', {get: () => 8})",
+                "Object.defineProperty(screen, 'width', {get: () => 1366})",
+                "Object.defineProperty(screen, 'height', {get: () => 768})",
+                "window.chrome = { runtime: {} }",
+                "Object.defineProperty(navigator, 'permissions', {get: () => ({query: () => Promise.resolve({state: 'granted'})})})"
+            ]
+            
+            for script in stealth_scripts:
+                try:
+                    self.driver.execute_script(script)
+                except:
+                    pass  # Ignore individual script failures
+            
+            print("✅ Chrome driver setup successful (maximum stealth mode)")
             return True
+            
         except Exception as e:
             print(f"❌ Error setting up Chrome driver: {e}")
             return False
 
-    def wait_for_cloudflare(self, max_wait=30):
-        """Wait for Cloudflare challenge to complete"""
+    def wait_for_cloudflare(self, max_wait=90):
+        """Enhanced Cloudflare detection and waiting"""
         print("⏳ Waiting for Cloudflare challenge to complete...")
         start_time = time.time()
+        consecutive_success = 0  # Need multiple successful checks
+        
         while time.time() - start_time < max_wait:
             try:
+                page_title = self.driver.title.lower()
                 page_source = self.driver.page_source.lower()
-                if "checking your browser" in page_source or "ray id" in page_source:
-                    time.sleep(2)
-                    continue
+                current_url = self.driver.current_url
+                
+                # Comprehensive Cloudflare detection
+                cloudflare_indicators = [
+                    "attention required",
+                    "cloudflare",
+                    "ray id:",
+                    "checking your browser",
+                    "please wait",
+                    "verifying you are human",
+                    "ddos protection",
+                    "security check",
+                    "one moment please"
+                ]
+                
+                is_cloudflare = any(indicator in page_source or indicator in page_title for indicator in cloudflare_indicators)
+                
+                # Also check URL for Cloudflare patterns
+                if "cf-browser-verification" in current_url or "cf-under-attack" in current_url:
+                    is_cloudflare = True
+                
+                if is_cloudflare:
+                    elapsed = int(time.time() - start_time)
+                    print(f"🔄 Cloudflare challenge active... ({elapsed}s)")
+                    time.sleep(random.uniform(3, 6))  # Random delays
+                    consecutive_success = 0
                 else:
-                    print("✅ Cloudflare challenge completed!")
-                    return True
-            except:
-                time.sleep(2)
+                    consecutive_success += 1
+                    if consecutive_success >= 2:  # Need 2 consecutive successes
+                        print("✅ Cloudflare challenge completed!")
+                        print(f"📄 Final page title: {self.driver.title}")
+                        return True
+                    time.sleep(2)  # Brief pause before re-checking
+                    
+            except Exception as e:
+                print(f"⚠️  Error checking Cloudflare status: {e}")
+                time.sleep(3)
+        
+        print(f"❌ Cloudflare challenge timeout after {max_wait}s")
+        print(f"📄 Final page title: {self.driver.title}")
+        print(f"🔗 Final URL: {self.driver.current_url}")
         return False
 
     def scrape_guild_data(self):
-        """Scrape Resonance Remain guild data"""
-        # URL encode the guild name to handle spaces properly
+        """Enhanced scraping with better Cloudflare handling"""
         guild_name_encoded = urllib.parse.quote_plus(self.guild_name)
         url = f"https://rubinot.com.br/?subtopic=guilds&page=view&GuildName={guild_name_encoded}"
         
         try:
             print(f"🌐 Navigating to {self.guild_name} guild page...")
             print(f"🔗 URL: {url}")
+            
+            # Add random delay to seem more human
+            time.sleep(random.uniform(2, 5))
+            
             self.driver.get(url)
-            self.wait_for_cloudflare()
-            time.sleep(5)
+            
+            # Extended Cloudflare wait with better detection
+            if not self.wait_for_cloudflare(max_wait=90):  # Increased timeout
+                print("❌ Cloudflare challenge failed - trying alternative approach")
+                
+                # Try refreshing the page once
+                print("🔄 Refreshing page...")
+                time.sleep(random.uniform(3, 7))
+                self.driver.refresh()
+                
+                if not self.wait_for_cloudflare(max_wait=60):
+                    print("❌ Still blocked after refresh")
+                    return []
+            
+            # Additional wait after Cloudflare
+            time.sleep(random.uniform(3, 8))
             
             page_title = self.driver.title
             print(f"📄 Page title: {page_title}")
@@ -730,6 +835,52 @@ class ResonanceRemainTracker:
             print(f"❌ OAuth check failed: {e}")
             return False
 
+    def run_with_retries(self):
+        """Main execution with retry logic for Cloudflare"""
+        max_attempts = 3
+        
+        for attempt in range(1, max_attempts + 1):
+            print(f"🎯 Attempt {attempt}/{max_attempts}")
+            
+            try:
+                # Setup browser
+                if not self.setup_driver():
+                    print("❌ Browser setup failed")
+                    continue
+                
+                # Try scraping
+                guild_data = self.scrape_guild_data()
+                
+                if guild_data:
+                    # Success! Update spreadsheet
+                    if self.update_spreadsheet(guild_data):
+                        print(f"\n✅ SUCCESS on attempt {attempt}!")
+                        print(f"📊 Updated with {len(guild_data)} members")
+                        return True
+                    else:
+                        print(f"❌ Spreadsheet update failed on attempt {attempt}")
+                else:
+                    print(f"❌ No data scraped on attempt {attempt}")
+                
+            except Exception as e:
+                print(f"❌ Error on attempt {attempt}: {e}")
+                import traceback
+                traceback.print_exc()
+            
+            finally:
+                if self.driver:
+                    self.driver.quit()
+                    self.driver = None
+            
+            # Wait before retry (exponential backoff)
+            if attempt < max_attempts:
+                wait_time = (attempt * 30) + random.uniform(10, 30)  # 40-60s, then 70-90s
+                print(f"⏳ Waiting {wait_time:.1f}s before retry...")
+                time.sleep(wait_time)
+        
+        print(f"❌ All {max_attempts} attempts failed")
+        return False
+
     def run(self):
         """Main execution function for Resonance Remain guild"""
         print("🚀 Resonance Remain Guild Tracker Starting...")
@@ -751,38 +902,20 @@ class ResonanceRemainTracker:
         try:
             if not self.check_google_permissions():
                 print("❌ Google OAuth has issues")
+                return
         except Exception as e:
             print(f"❌ Authentication error: {e}")
-        
-        print("\n🌐 Step 3: Setting up browser...")
-        if not self.setup_driver():
-            print("❌ Browser setup failed")
             return
         
-        print("\n🎯 Step 4: Starting Resonance Remain guild data collection...")
+        print("\n🎯 Step 3: Starting guild data collection with retry logic...")
         
-        try:
-            guild_data = self.scrape_guild_data()
-            
-            if guild_data:
-                if self.update_spreadsheet(guild_data):
-                    print(f"\n✅ Resonance Remain Guild Successfully Updated!")
-                    print(f"📊 Updated with {len(guild_data)} members")
-                else:
-                    print(f"\n❌ Failed to update spreadsheet")
-                    self.save_data_locally(guild_data)
-            else:
-                print(f"\n❌ No data scraped from Resonance Remain guild")
-                
-        except Exception as e:
-            print(f"\n❌ Error processing Resonance Remain: {e}")
-            import traceback
-            traceback.print_exc()
+        # Use retry logic for better Cloudflare handling
+        success = self.run_with_retries()
         
-        finally:
-            if self.driver:
-                self.driver.quit()
-                print("\n🔒 Browser closed")
+        if success:
+            print(f"\n🎉 RESONANCE REMAIN GUILD TRACKER COMPLETED SUCCESSFULLY!")
+        else:
+            print(f"\n❌ RESONANCE REMAIN GUILD TRACKER FAILED AFTER ALL RETRIES")
 
 if __name__ == "__main__":
     print("🔥 STARTING RESONANCE REMAIN GUILD TRACKER...")
