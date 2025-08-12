@@ -43,4 +43,4 @@ jobs:
         GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
         DISPLAY: :99
       run: |
-        python Resonance_Remain.py
+        python GitHub_version.py
