@@ -1,0 +1,46 @@
+name: Resonance Remain Guild Tracker
+
+on:
+  schedule:
+    # Runs at 2 PM UTC (3 PM Dublin time in winter, 4 PM in summer)
+    - cron: '0 14 * * *'
+  workflow_dispatch: # Allows manual triggering
+
+jobs:
+  track-guild:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        pip install selenium pandas gspread google-auth google-auth-oauthlib google-auth-httplib2
+        
+    - name: Install Chrome and ChromeDriver
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y google-chrome-stable
+        
+    - name: Set up virtual display
+      run: |
+        sudo apt-get install -y xvfb
+        export DISPLAY=:99
+        Xvfb :99 -screen 0 1920x1080x24 &
+        
+    - name: Create necessary directories
+      run: |
+        mkdir -p backups
+        
+    - name: Run guild tracker
+      env:
+        GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+        DISPLAY: :99
+      run: |
+        python Resonance_Remain.py
