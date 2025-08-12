@@ -892,4 +892,4 @@ if __name__ == "__main__":
     
     # Only wait for input if running locally (not in GitHub Actions)
     if not os.environ.get('GITHUB_ACTIONS'):
-        input("Press Enter to exit...")%
+        input("Press Enter to exit...")
