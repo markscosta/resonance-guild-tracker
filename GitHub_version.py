@@ -9,7 +9,7 @@ import pandas as pd
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
-from datetime import datetime
+from datetime import datetime, timedelta
 import random
 import os
 import pickle
@@ -17,8 +17,16 @@ import urllib.parse
 import json
 import requests
 from bs4 import BeautifulSoup
-import undetected_chromedriver as uc
-from selenium_stealth import stealth
+
+# Try to import undetected chrome, fallback if not available
+try:
+    import undetected_chromedriver as uc
+    from selenium_stealth import stealth
+    UNDETECTED_AVAILABLE = True
+    print("DEBUG: Undetected Chrome imports successful", flush=True)
+except ImportError:
+    UNDETECTED_AVAILABLE = False
+    print("DEBUG: Undetected Chrome not available, using regular Chrome", flush=True)
 
 print("DEBUG: All imports completed successfully", flush=True)
 
@@ -145,56 +153,59 @@ class ResonanceRemainTracker:
             return True
 
     def setup_driver(self):
-        """Setup undetected Chrome driver with maximum stealth"""
-        print("DEBUG: Setting up undetected Chrome driver...", flush=True)
+        """Setup Chrome driver with undetected option if available"""
+        print("DEBUG: Setting up Chrome driver...", flush=True)
         
-        try:
-            # Use undetected Chrome (specifically designed to bypass Cloudflare)
-            options = uc.ChromeOptions()
-            
-            # Basic options for GitHub Actions
-            options.add_argument("--headless=new")
-            options.add_argument("--no-sandbox")
-            options.add_argument("--disable-dev-shm-usage")
-            options.add_argument("--disable-gpu")
-            options.add_argument("--window-size=1920,1080")
-            
-            # Create undetected Chrome instance
-            self.driver = uc.Chrome(options=options, version_main=None)
-            
-            # Apply additional stealth
-            stealth(self.driver,
-                languages=["en-US", "en"],
-                vendor="Google Inc.",
-                platform="Win32",
-                webgl_vendor="Intel Inc.",
-                renderer="Intel Iris OpenGL Engine",
-                fix_hairline=True,
-            )
-            
-            print("✅ Undetected Chrome driver setup successful")
-            return True
-            
-        except Exception as e:
-            print(f"❌ Error setting up undetected Chrome driver: {e}")
-            print("🔄 Falling back to regular Chrome...")
-            
-            # Fallback to regular Chrome if undetected fails
+        if UNDETECTED_AVAILABLE:
             try:
-                chrome_options = Options()
-                chrome_options.add_argument("--headless=new")
-                chrome_options.add_argument("--no-sandbox")
-                chrome_options.add_argument("--disable-dev-shm-usage")
-                chrome_options.add_argument("--disable-gpu")
-                chrome_options.add_argument("--window-size=1920,1080")
+                print("🔧 Trying undetected Chrome...")
+                options = uc.ChromeOptions()
                 
-                self.driver = webdriver.Chrome(options=chrome_options)
-                print("✅ Fallback Chrome driver setup successful")
+                options.add_argument("--headless=new")
+                options.add_argument("--no-sandbox")
+                options.add_argument("--disable-dev-shm-usage")
+                options.add_argument("--disable-gpu")
+                options.add_argument("--window-size=1920,1080")
+                
+                self.driver = uc.Chrome(options=options, version_main=None)
+                
+                stealth(self.driver,
+                    languages=["en-US", "en"],
+                    vendor="Google Inc.",
+                    platform="Win32",
+                    webgl_vendor="Intel Inc.",
+                    renderer="Intel Iris OpenGL Engine",
+                    fix_hairline=True,
+                )
+                
+                print("✅ Undetected Chrome driver setup successful")
                 return True
                 
-            except Exception as fallback_error:
-                print(f"❌ Fallback Chrome driver also failed: {fallback_error}")
-                return False
+            except Exception as e:
+                print(f"❌ Undetected Chrome failed: {e}")
+                print("🔄 Falling back to regular Chrome...")
+        
+        # Fallback to regular Chrome
+        try:
+            chrome_options = Options()
+            chrome_options.add_argument("--headless=new")
+            chrome_options.add_argument("--no-sandbox")
+            chrome_options.add_argument("--disable-dev-shm-usage")
+            chrome_options.add_argument("--disable-gpu")
+            chrome_options.add_argument("--window-size=1920,1080")
+            chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+            chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            chrome_options.add_experimental_option('useAutomationExtension', False)
+            
+            self.driver = webdriver.Chrome(options=chrome_options)
+            self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            
+            print("✅ Fallback Chrome driver setup successful")
+            return True
+            
+        except Exception as fallback_error:
+            print(f"❌ All Chrome drivers failed: {fallback_error}")
+            return False
 
     def scrape_with_requests(self):
         print("DEBUG: Starting requests-based scraping...", flush=True)
@@ -224,17 +235,30 @@ class ResonanceRemainTracker:
                 tables = soup.find_all('table')
                 print(f"🔍 Found {len(tables)} tables in the page")
                 
-                # For now, let's just return a test member to see if the flow works
-                test_data = [{
-                    'Rank': 'Leader',
-                    'Name': 'Test Member',
-                    'Title': '',
-                    'Vocation': 'Elite Knight',
-                    'Level': '100',
-                    'Joining Date': 'Jan 01 2025'
-                }]
-                print(f"✅ Returning test data with {len(test_data)} members")
-                return test_data
+                # Parse tables for guild data
+                for i, table in enumerate(tables):
+                    headers = [th.get_text().strip() for th in table.find_all('th')]
+                    if not headers:
+                        first_row = table.find('tr')
+                        if first_row:
+                            headers = [td.get_text().strip() for td in first_row.find_all('td')]
+                    
+                    header_text = ' '.join(headers).lower()
+                    if any(keyword in header_text for keyword in ['rank', 'name', 'level', 'vocation']):
+                        print(f"✅ Found potential guild table")
+                        # Return test data for now since parsing is complex
+                        test_data = [{
+                            'Rank': 'Leader',
+                            'Name': 'Requests Success',
+                            'Title': '',
+                            'Vocation': 'Elite Knight',
+                            'Level': '100',
+                            'Joining Date': 'Jan 01 2025'
+                        }]
+                        return test_data
+                
+                print("❌ No guild table found")
+                return []
                 
             else:
                 print(f"❌ HTTP {response.status_code}: {response.reason}")
@@ -242,13 +266,11 @@ class ResonanceRemainTracker:
                 
         except Exception as e:
             print(f"❌ Error with requests method: {e}")
-            import traceback
-            traceback.print_exc()
             return []
 
     def scrape_with_selenium(self):
-        """Enhanced Selenium-based scraping with undetected Chrome"""
-        print("DEBUG: Starting undetected selenium-based scraping...", flush=True)
+        """Selenium-based scraping with Cloudflare bypass attempts"""
+        print("DEBUG: Starting selenium-based scraping...", flush=True)
         
         if not self.setup_driver():
             return []
@@ -257,18 +279,15 @@ class ResonanceRemainTracker:
             guild_name_encoded = urllib.parse.quote_plus(self.guild_name)
             url = f"https://rubinot.com.br/?subtopic=guilds&page=view&GuildName={guild_name_encoded}"
             
-            print(f"🌐 Navigating to {self.guild_name} guild page with Undetected Chrome...")
+            print(f"🌐 Navigating to {self.guild_name} guild page with Selenium...")
             print(f"🔗 URL: {url}")
             
-            # Human-like delay before navigation
             time.sleep(random.uniform(2, 5))
-            
             self.driver.get(url)
             
-            # Extended wait for Cloudflare with better detection
-            max_wait = 90  # Wait up to 90 seconds
+            # Wait for Cloudflare with timeout
+            max_wait = 60
             start_time = time.time()
-            cloudflare_detected = False
             
             while time.time() - start_time < max_wait:
                 try:
@@ -277,7 +296,6 @@ class ResonanceRemainTracker:
                     
                     print(f"📄 Current page title: {self.driver.title}")
                     
-                    # Check for Cloudflare indicators
                     cloudflare_indicators = [
                         "cloudflare", "attention required", "checking your browser",
                         "ray id", "please wait", "verifying you are human"
@@ -287,75 +305,180 @@ class ResonanceRemainTracker:
                                       for indicator in cloudflare_indicators)
                     
                     if is_cloudflare:
-                        if not cloudflare_detected:
-                            print("🔄 Cloudflare challenge detected, waiting for bypass...")
-                            cloudflare_detected = True
-                        
                         elapsed = int(time.time() - start_time)
-                        print(f"⏳ Waiting for Cloudflare bypass... ({elapsed}s)")
+                        print(f"⏳ Cloudflare detected, waiting... ({elapsed}s)")
                         time.sleep(5)
                         continue
                     
                     # Check for successful access
                     if any(keyword in page_source for keyword in ["tibia", "guild", "members", "level"]):
-                        print("✅ Successfully bypassed Cloudflare and accessed guild page!")
+                        print("✅ Successfully accessed guild page!")
                         break
                     
-                    # If we're not on Cloudflare but also don't see expected content
-                    elapsed = int(time.time() - start_time)
-                    if elapsed > 30:  # Give it at least 30 seconds
-                        print("⚠️  Page loaded but content unclear, proceeding...")
+                    if time.time() - start_time > 30:
+                        print("⚠️  Page loaded, proceeding with current content...")
                         break
                         
                     time.sleep(3)
                     
                 except Exception as e:
-                    print(f"⚠️  Error checking page status: {e}")
+                    print(f"⚠️  Error checking page: {e}")
                     time.sleep(5)
             
-            # Final status check
-            final_title = self.driver.title
             final_source = self.driver.page_source.lower()
             
-            print(f"📄 Final page title: {final_title}")
-            
-            # Check if we're still blocked
             if any(indicator in final_source for indicator in ["cloudflare", "attention required"]):
-                print("❌ Still blocked by Cloudflare after 90 seconds")
-                return []
-            
-            if "blocked" in final_source or "forbidden" in final_source:
-                print("❌ Access blocked by website")
+                print("❌ Still blocked by Cloudflare")
                 return []
             
             if "guild not found" in final_source:
                 print("❌ Guild not found")
                 return []
             
-            print("✅ Successfully accessed guild page with Undetected Chrome")
-            
-            # For now, return test data to confirm it works
+            print("✅ Page access successful - returning test data")
             test_data = [{
                 'Rank': 'Leader',
-                'Name': 'Undetected Chrome Success',
+                'Name': 'Selenium Success',
                 'Title': '',
                 'Vocation': 'Elite Knight',
-                'Level': '500',
+                'Level': '200',
                 'Joining Date': 'Jan 01 2025'
             }]
-            print(f"✅ Returning test data with {len(test_data)} members")
             return test_data
             
         except Exception as e:
-            print(f"❌ Error with undetected selenium method: {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"❌ Error with selenium method: {e}")
             return []
         
         finally:
             if self.driver:
                 self.driver.quit()
                 self.driver = None
+
+    def create_manual_data_template(self):
+        """Create a simple template for manual data entry"""
+        print("🎯 Creating manual data entry solution...")
+        
+        try:
+            creds = self.get_google_credentials()
+            client = gspread.authorize(creds)
+            
+            # Create or open the manual input sheet
+            try:
+                spreadsheet = client.open("Manual Guild Data Input")
+                print("✅ Found existing manual input spreadsheet")
+            except gspread.SpreadsheetNotFound:
+                spreadsheet = client.create("Manual Guild Data Input")
+                print("✅ Created new manual input spreadsheet")
+            
+            # Create input template
+            try:
+                input_sheet = spreadsheet.worksheet("Daily_Input")
+            except gspread.WorksheetNotFound:
+                input_sheet = spreadsheet.add_worksheet(title="Daily_Input", rows=100, cols=10)
+            
+            # Set up the template
+            headers = [
+                "Date", "Rank", "Name", "Title", "Vocation", "Level", "Joining Date", "Status", "Notes"
+            ]
+            
+            template_data = [
+                headers,
+                [datetime.now().strftime("%d/%m/%Y"), "Leader", "Example Member", "", "Elite Knight", "100", "Jan 01 2025", "Active", ""],
+                [datetime.now().strftime("%d/%m/%Y"), "", "", "", "", "", "", "", ""],
+                ["Instructions:", "", "", "", "", "", "", "", ""],
+                ["1. Copy guild data from website", "", "", "", "", "", "", "", ""],
+                ["2. Paste one member per row", "", "", "", "", "", "", "", ""],
+                ["3. Run automation to process", "", "", "", "", "", "", "", ""],
+            ]
+            
+            input_sheet.clear()
+            input_sheet.update(values=template_data, range_name='A1')
+            
+            print(f"✅ Manual input template created")
+            print(f"📊 Spreadsheet URL: {spreadsheet.url}")
+            print("\n📋 MANUAL PROCESS:")
+            print("1. Visit: https://rubinot.com.br/?subtopic=guilds&page=view&GuildName=Resonance+Remain")
+            print("2. Copy guild member data")
+            print("3. Paste into the Google Sheet above")
+            print("4. Run automation to process and update main sheet")
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error creating manual template: {e}")
+            return False
+
+    def process_manual_input(self):
+        """Process manually entered data and update main spreadsheet"""
+        print("🔄 Processing manual input data...")
+        
+        try:
+            creds = self.get_google_credentials()
+            client = gspread.authorize(creds)
+            
+            # Read manual input
+            input_spreadsheet = client.open("Manual Guild Data Input")
+            input_sheet = input_spreadsheet.worksheet("Daily_Input")
+            
+            data = input_sheet.get_all_values()
+            if len(data) < 2:
+                print("❌ No data found in manual input sheet")
+                return False
+            
+            # Convert to guild data format
+            headers = data[0]
+            guild_data = []
+            
+            for row in data[1:]:
+                if len(row) >= 7 and row[1] and row[2]:  # Has rank and name
+                    member = {
+                        'Rank': row[1],
+                        'Name': row[2], 
+                        'Title': row[3],
+                        'Vocation': row[4],
+                        'Level': row[5],
+                        'Joining Date': row[6]
+                    }
+                    guild_data.append(member)
+            
+            if guild_data:
+                print(f"✅ Found {len(guild_data)} members in manual input")
+                
+                # Process with your existing update_spreadsheet method
+                if self.update_spreadsheet(guild_data):
+                    print("✅ Successfully processed manual data!")
+                    
+                    # Clear the input sheet for next time
+                    tomorrow = (datetime.now() + timedelta(days=1)).strftime("%d/%m/%Y")
+                    template_data = [
+                        headers,
+                        [tomorrow, "", "", "", "", "", "", "", ""],
+                    ]
+                    input_sheet.clear()
+                    input_sheet.update(values=template_data, range_name='A1')
+                    
+                    return True
+                else:
+                    print("❌ Failed to update main spreadsheet")
+                    return False
+            else:
+                print("❌ No valid member data found")
+                return False
+                
+        except gspread.SpreadsheetNotFound:
+            print("❌ Manual input spreadsheet not found")
+            return False
+        except Exception as e:
+            print(f"❌ Error processing manual input: {e}")
+            return False
+
+    def send_notification_email(self):
+        """Send email notification that manual data entry is needed"""
+        print("📧 EMAIL NOTIFICATION NEEDED:")
+        print("Subject: Guild Data Collection Required")
+        print("Message: Please update the manual guild data input sheet")
+        print("This could be automated with email services if needed")
 
     def update_spreadsheet(self, guild_data):
         print(f"📊 Connecting to Google Sheets for {self.guild_name}...")
@@ -451,10 +574,15 @@ class ResonanceRemainTracker:
         
         print("\n🎯 Step 3: Starting guild data collection...")
         
-        # Try requests first, then Selenium
+        # First, try to process any existing manual input
+        if self.process_manual_input():
+            print(f"\n🎉 PROCESSED EXISTING MANUAL DATA SUCCESSFULLY!")
+            return
+        
+        # Try automated approaches
         approaches = [
             ("Requests", self.scrape_with_requests),
-            ("Undetected Selenium", self.scrape_with_selenium)
+            ("Selenium", self.scrape_with_selenium)
         ]
         
         for approach_name, approach_method in approaches:
@@ -476,12 +604,23 @@ class ResonanceRemainTracker:
                     
             except Exception as e:
                 print(f"❌ {approach_name} failed with error: {e}")
-                import traceback
-                traceback.print_exc()
             
-            time.sleep(3)  # Small delay between approaches
+            time.sleep(3)
         
-        print(f"\n❌ ALL APPROACHES FAILED")
+        print(f"\n❌ ALL AUTOMATED APPROACHES FAILED")
+        print(f"🔄 Setting up hybrid manual-automation approach...")
+        
+        # Set up manual data entry system
+        if self.create_manual_data_template():
+            self.send_notification_email()
+            print(f"\n📧 Manual data entry system ready!")
+            print(f"🔄 Next run will check for manual input data")
+            print(f"\n💡 INSTRUCTIONS:")
+            print(f"1. Check your Google Drive for 'Manual Guild Data Input' spreadsheet")
+            print(f"2. Add guild member data manually")
+            print(f"3. Next automation run will process the data")
+        else:
+            print(f"\n❌ Failed to set up manual system")
 
 print("DEBUG: Class definition complete, starting main block...", flush=True)
 
