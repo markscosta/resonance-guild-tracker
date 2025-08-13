@@ -9,7 +9,7 @@ on:
 jobs:
   track-guild:
     runs-on: ubuntu-latest
-    timeout-minutes: 15  # Kills job after 15 minutes if stuck
+    timeout-minutes: 20  # Increased timeout for undetected chrome
     
     steps:
     - name: Checkout code
@@ -22,7 +22,7 @@ jobs:
     
     - name: Install dependencies
       run: |
-        pip install selenium pandas gspread google-auth google-auth-oauthlib google-auth-httplib2 requests beautifulsoup4
+        pip install selenium pandas gspread google-auth google-auth-oauthlib google-auth-httplib2 requests beautifulsoup4 undetected-chromedriver selenium-stealth
         
     - name: Install Chrome and ChromeDriver
       run: |
@@ -41,7 +41,7 @@ jobs:
         mkdir -p backups
         
     - name: Run guild tracker
-      timeout-minutes: 12  # Kills this step after 12 minutes
+      timeout-minutes: 15  # Kills this step after 15 minutes
       env:
         GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
         DISPLAY: :99
