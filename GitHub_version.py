@@ -17,6 +17,8 @@ import urllib.parse
 import json
 import requests
 from bs4 import BeautifulSoup
+import undetected_chromedriver as uc
+from selenium_stealth import stealth
 
 print("DEBUG: All imports completed successfully", flush=True)
 
@@ -143,32 +145,56 @@ class ResonanceRemainTracker:
             return True
 
     def setup_driver(self):
-        """Setup Chrome driver"""
-        print("DEBUG: Setting up Chrome driver...", flush=True)
-        chrome_options = Options()
-        
-        chrome_options.add_argument("--headless=new")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--window-size=1366,768")
-        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        chrome_options.add_experimental_option('useAutomationExtension', False)
-        chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        """Setup undetected Chrome driver with maximum stealth"""
+        print("DEBUG: Setting up undetected Chrome driver...", flush=True)
         
         try:
-            self.driver = webdriver.Chrome(options=chrome_options)
+            # Use undetected Chrome (specifically designed to bypass Cloudflare)
+            options = uc.ChromeOptions()
             
-            # Basic stealth
-            self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            # Basic options for GitHub Actions
+            options.add_argument("--headless=new")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--disable-gpu")
+            options.add_argument("--window-size=1920,1080")
             
-            print("✅ Chrome driver setup successful")
+            # Create undetected Chrome instance
+            self.driver = uc.Chrome(options=options, version_main=None)
+            
+            # Apply additional stealth
+            stealth(self.driver,
+                languages=["en-US", "en"],
+                vendor="Google Inc.",
+                platform="Win32",
+                webgl_vendor="Intel Inc.",
+                renderer="Intel Iris OpenGL Engine",
+                fix_hairline=True,
+            )
+            
+            print("✅ Undetected Chrome driver setup successful")
             return True
             
         except Exception as e:
-            print(f"❌ Error setting up Chrome driver: {e}")
-            return False
+            print(f"❌ Error setting up undetected Chrome driver: {e}")
+            print("🔄 Falling back to regular Chrome...")
+            
+            # Fallback to regular Chrome if undetected fails
+            try:
+                chrome_options = Options()
+                chrome_options.add_argument("--headless=new")
+                chrome_options.add_argument("--no-sandbox")
+                chrome_options.add_argument("--disable-dev-shm-usage")
+                chrome_options.add_argument("--disable-gpu")
+                chrome_options.add_argument("--window-size=1920,1080")
+                
+                self.driver = webdriver.Chrome(options=chrome_options)
+                print("✅ Fallback Chrome driver setup successful")
+                return True
+                
+            except Exception as fallback_error:
+                print(f"❌ Fallback Chrome driver also failed: {fallback_error}")
+                return False
 
     def scrape_with_requests(self):
         print("DEBUG: Starting requests-based scraping...", flush=True)
@@ -221,8 +247,8 @@ class ResonanceRemainTracker:
             return []
 
     def scrape_with_selenium(self):
-        """Selenium-based scraping"""
-        print("DEBUG: Starting selenium-based scraping...", flush=True)
+        """Enhanced Selenium-based scraping with undetected Chrome"""
+        print("DEBUG: Starting undetected selenium-based scraping...", flush=True)
         
         if not self.setup_driver():
             return []
@@ -231,46 +257,97 @@ class ResonanceRemainTracker:
             guild_name_encoded = urllib.parse.quote_plus(self.guild_name)
             url = f"https://rubinot.com.br/?subtopic=guilds&page=view&GuildName={guild_name_encoded}"
             
-            print(f"🌐 Navigating to {self.guild_name} guild page with Selenium...")
+            print(f"🌐 Navigating to {self.guild_name} guild page with Undetected Chrome...")
             print(f"🔗 URL: {url}")
             
-            time.sleep(2)
+            # Human-like delay before navigation
+            time.sleep(random.uniform(2, 5))
+            
             self.driver.get(url)
-            time.sleep(5)  # Wait for page to load
             
-            page_title = self.driver.title
-            print(f"📄 Page title: {page_title}")
+            # Extended wait for Cloudflare with better detection
+            max_wait = 90  # Wait up to 90 seconds
+            start_time = time.time()
+            cloudflare_detected = False
             
-            # Check for Cloudflare
-            page_source = self.driver.page_source.lower()
-            if "cloudflare" in page_source or "attention required" in page_source:
-                print("❌ Cloudflare challenge detected")
+            while time.time() - start_time < max_wait:
+                try:
+                    page_title = self.driver.title.lower()
+                    page_source = self.driver.page_source.lower()
+                    
+                    print(f"📄 Current page title: {self.driver.title}")
+                    
+                    # Check for Cloudflare indicators
+                    cloudflare_indicators = [
+                        "cloudflare", "attention required", "checking your browser",
+                        "ray id", "please wait", "verifying you are human"
+                    ]
+                    
+                    is_cloudflare = any(indicator in page_title or indicator in page_source 
+                                      for indicator in cloudflare_indicators)
+                    
+                    if is_cloudflare:
+                        if not cloudflare_detected:
+                            print("🔄 Cloudflare challenge detected, waiting for bypass...")
+                            cloudflare_detected = True
+                        
+                        elapsed = int(time.time() - start_time)
+                        print(f"⏳ Waiting for Cloudflare bypass... ({elapsed}s)")
+                        time.sleep(5)
+                        continue
+                    
+                    # Check for successful access
+                    if any(keyword in page_source for keyword in ["tibia", "guild", "members", "level"]):
+                        print("✅ Successfully bypassed Cloudflare and accessed guild page!")
+                        break
+                    
+                    # If we're not on Cloudflare but also don't see expected content
+                    elapsed = int(time.time() - start_time)
+                    if elapsed > 30:  # Give it at least 30 seconds
+                        print("⚠️  Page loaded but content unclear, proceeding...")
+                        break
+                        
+                    time.sleep(3)
+                    
+                except Exception as e:
+                    print(f"⚠️  Error checking page status: {e}")
+                    time.sleep(5)
+            
+            # Final status check
+            final_title = self.driver.title
+            final_source = self.driver.page_source.lower()
+            
+            print(f"📄 Final page title: {final_title}")
+            
+            # Check if we're still blocked
+            if any(indicator in final_source for indicator in ["cloudflare", "attention required"]):
+                print("❌ Still blocked by Cloudflare after 90 seconds")
                 return []
             
-            if "blocked" in page_source or "forbidden" in page_source:
+            if "blocked" in final_source or "forbidden" in final_source:
                 print("❌ Access blocked by website")
                 return []
             
-            if "guild not found" in page_source:
+            if "guild not found" in final_source:
                 print("❌ Guild not found")
                 return []
             
-            print("✅ Successfully accessed guild page with Selenium")
+            print("✅ Successfully accessed guild page with Undetected Chrome")
             
-            # For now, return test data to confirm Selenium works
+            # For now, return test data to confirm it works
             test_data = [{
                 'Rank': 'Leader',
-                'Name': 'Selenium Test Member',
+                'Name': 'Undetected Chrome Success',
                 'Title': '',
                 'Vocation': 'Elite Knight',
-                'Level': '200',
+                'Level': '500',
                 'Joining Date': 'Jan 01 2025'
             }]
             print(f"✅ Returning test data with {len(test_data)} members")
             return test_data
             
         except Exception as e:
-            print(f"❌ Error with selenium method: {e}")
+            print(f"❌ Error with undetected selenium method: {e}")
             import traceback
             traceback.print_exc()
             return []
@@ -377,7 +454,7 @@ class ResonanceRemainTracker:
         # Try requests first, then Selenium
         approaches = [
             ("Requests", self.scrape_with_requests),
-            ("Selenium", self.scrape_with_selenium)
+            ("Undetected Selenium", self.scrape_with_selenium)
         ]
         
         for approach_name, approach_method in approaches:
